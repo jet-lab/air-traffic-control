@@ -20,7 +20,7 @@ use actix_web::{post, App, HttpResponse, HttpServer, Responder};
 async fn main() -> std::io::Result<()> {
     let port: u16 = match option_env!("PORT") {
         Some(p) => p.parse().unwrap(),
-        None => 8008,
+        None => 8080,
     };
 
     HttpServer::new(|| App::new().service(rpc))
