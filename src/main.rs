@@ -15,13 +15,18 @@
 
 use actix_web::web::Bytes;
 use actix_web::{post, App, HttpResponse, HttpServer, Responder};
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let port: u16 = match option_env!("PORT") {
-        Some(p) => p.parse().unwrap(),
-        None => 8080,
-    };
+    let _rpc_endpoint = option_env!("RPC_ENDPOINT").unwrap_or("http://localhost:8899");
+
+    let port: u16 = option_env!("PORT")
+        .map(|p| p.parse().unwrap())
+        .unwrap_or(8080);
+
+    dbg!(port);
 
     HttpServer::new(|| App::new().service(rpc))
         .bind(("0.0.0.0", port))?
@@ -32,5 +37,35 @@ async fn main() -> std::io::Result<()> {
 #[post("/")]
 async fn rpc(payload: Bytes) -> impl Responder {
     dbg!(payload);
+    dbg!(RpcEvent::random());
+
     HttpResponse::Ok()
+}
+
+#[derive(Debug)]
+pub enum RpcEvent {
+    RateLimit,
+    Timeout,
+}
+
+impl RpcEvent {
+    pub fn random() -> Self {
+        rand::random()
+    }
+
+    pub fn respond(&self) -> impl Responder {
+        match self {
+            RpcEvent::RateLimit => HttpResponse::TooManyRequests().finish(),
+            RpcEvent::Timeout => HttpResponse::RequestTimeout().finish(),
+        }
+    }
+}
+
+impl Distribution<RpcEvent> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RpcEvent {
+        match rng.gen_range(0..=1) {
+            0 => RpcEvent::RateLimit,
+            _ => RpcEvent::Timeout,
+        }
+    }
 }
