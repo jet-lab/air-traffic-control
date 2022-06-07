@@ -18,3 +18,4 @@ default = []
 opt-level = "s"
 
 [dependencies]
+actix-web = "4.0"
