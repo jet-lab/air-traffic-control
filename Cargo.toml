@@ -1,0 +1,20 @@
+[package]
+name = "air-traffic-control"
+version = "0.1.0"
+description = "Solana validator proxy to simulate RPC traffic failures."
+repository = "https://github.com/jet-lab/air-traffic-control"
+readme = "https://github.com/jet-lab/air-traffic-control#readme"
+license = "AGPL-3.0-or-later"
+edition = "2021"
+
+[[bin]]
+name = "atc"
+path = "src/main.rs"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+
+[dependencies]
