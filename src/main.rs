@@ -54,7 +54,7 @@ async fn rpc(
     dbg!(&payload);
 
     if thread_rng().gen::<f32>() >= SUCCESS_PERCENTAGE {
-        return Ok(RpcEvent::random().respond());
+        return Ok(RpcEvent::random().respond().await);
     }
 
     let res = reqwest::Client::new()
@@ -83,10 +83,13 @@ impl RpcEvent {
         rand::random()
     }
 
-    pub fn respond(&self) -> HttpResponse {
+    pub async fn respond(&self) -> HttpResponse {
         match self {
             RpcEvent::RateLimit => HttpResponse::TooManyRequests().finish(),
-            RpcEvent::Timeout => HttpResponse::RequestTimeout().finish(),
+            RpcEvent::Timeout => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                HttpResponse::RequestTimeout().finish()
+            }
         }
     }
 }
@@ -104,15 +107,15 @@ impl Distribution<RpcEvent> for Standard {
 mod tests {
     use super::*;
 
-    #[test]
-    fn event_responses() {
+    #[actix_rt::test]
+    async fn event_responses() {
         assert_eq!(
-            RpcEvent::RateLimit.respond().status(),
+            RpcEvent::RateLimit.respond().await.status(),
             HttpResponse::TooManyRequests().finish().status(),
         );
 
         assert_eq!(
-            RpcEvent::Timeout.respond().status(),
+            RpcEvent::Timeout.respond().await.status(),
             HttpResponse::RequestTimeout().finish().status(),
         );
     }
