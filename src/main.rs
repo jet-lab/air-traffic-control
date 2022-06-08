@@ -71,8 +71,9 @@ async fn rpc(
         .body(res))
 }
 
-#[derive(Debug)]
-pub enum RpcEvent {
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+enum RpcEvent {
     RateLimit,
     Timeout,
 }
@@ -96,5 +97,34 @@ impl Distribution<RpcEvent> for Standard {
             0 => RpcEvent::RateLimit,
             _ => RpcEvent::Timeout,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_responses() {
+        assert_eq!(
+            RpcEvent::RateLimit.respond().status(),
+            HttpResponse::TooManyRequests().finish().status(),
+        );
+
+        assert_eq!(
+            RpcEvent::Timeout.respond().status(),
+            HttpResponse::RequestTimeout().finish().status(),
+        );
+    }
+
+    #[test]
+    fn random_events() {
+        let events1: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
+        assert!(!events1.is_empty());
+
+        let events2: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
+        assert!(!events2.is_empty());
+
+        assert_ne!(events1, events2);
     }
 }
