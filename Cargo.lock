@@ -217,6 +217,7 @@ dependencies = [
  "env_logger",
  "rand",
  "reqwest",
+ "serde_json",
  "tokio",
 ]
 

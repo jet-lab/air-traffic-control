@@ -13,15 +13,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use actix_web::web::{Bytes, Data};
+use actix_web::web;
 use actix_web::{middleware, post, App, HttpResponse, HttpServer, Responder};
 use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
+use serde_json::json;
 use std::env::var;
+use std::sync::Mutex;
 
 const SUCCESS_PERCENTAGE: f32 = 0.75;
 
 struct ServiceConfig {
+    fake_signatures: Mutex<Vec<String>>,
     rpc_endpoint: String,
 }
 
@@ -31,14 +34,16 @@ async fn main() -> std::io::Result<()> {
 
     let port: u16 = var("PORT").map(|p| p.parse().unwrap()).unwrap_or(8080);
 
-    HttpServer::new(|| {
+    let shared_data = web::Data::new(ServiceConfig {
+        fake_signatures: Mutex::new(Vec::new()),
+        rpc_endpoint: var("RPC_ENDPOINT").unwrap_or_else(|_| "http://localhost:8899".into()),
+    });
+
+    HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compress::default())
             .wrap(middleware::Logger::default())
-            .app_data(Data::new(ServiceConfig {
-                rpc_endpoint: var("RPC_ENDPOINT")
-                    .unwrap_or_else(|_| "http://localhost:8899".into()),
-            }))
+            .app_data(shared_data.clone())
             .service(rpc)
     })
     .bind(("0.0.0.0", port))?
@@ -48,8 +53,8 @@ async fn main() -> std::io::Result<()> {
 
 #[post("/")]
 async fn rpc(
-    payload: Bytes,
-    data: Data<ServiceConfig>,
+    payload: web::Bytes,
+    data: web::Data<ServiceConfig>,
 ) -> Result<impl Responder, Box<dyn std::error::Error>> {
     dbg!(&payload);
 
@@ -57,18 +62,46 @@ async fn rpc(
         return Ok(RpcEvent::random().respond().await);
     }
 
-    let res = reqwest::Client::new()
-        .post(data.rpc_endpoint.clone())
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(payload)
-        .send()
-        .await?
-        .text()
-        .await?;
+    let req: serde_json::Value = serde_json::from_slice(payload.as_ref())?;
+    let method = req.get("method").unwrap().as_str().unwrap();
 
-    Ok(HttpResponse::Ok()
-        .content_type("application/json")
-        .body(res))
+    match method {
+        "sendTransaction" => {
+            let sig = generate_fake_signature();
+
+            let mut fake_sigs = data.fake_signatures.lock().unwrap();
+            fake_sigs.push(sig.clone());
+
+            dbg!(&data.fake_signatures);
+
+            Ok(HttpResponse::Ok().content_type("application/json").body(
+                json!({
+                    "jsonrpc": "2.0",
+                    "result": sig,
+                    "id": 1,
+                })
+                .to_string(),
+            ))
+        }
+        _ => {
+            let res = reqwest::Client::new()
+                .post(data.rpc_endpoint.clone())
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(payload)
+                .send()
+                .await?
+                .text()
+                .await?;
+
+            Ok(HttpResponse::Ok()
+                .content_type("application/json")
+                .body(res))
+        }
+    }
+}
+
+fn generate_fake_signature() -> String {
+    todo!()
 }
 
 #[derive(Clone, Debug)]
