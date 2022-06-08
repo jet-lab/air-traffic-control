@@ -13,33 +13,40 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use actix_web::web::Bytes;
-use actix_web::{post, App, HttpResponse, HttpServer, Responder};
+use actix_web::{middleware, post, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use rand::distributions::{Distribution, Standard};
-use rand::Rng;
+use rand::{thread_rng, Rng};
+
+const SUCCESS_PERCENTAGE: f32 = 0.75;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let _rpc_endpoint = option_env!("RPC_ENDPOINT").unwrap_or("http://localhost:8899");
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let port: u16 = option_env!("PORT")
         .map(|p| p.parse().unwrap())
         .unwrap_or(8080);
 
-    dbg!(port);
-
-    HttpServer::new(|| App::new().service(rpc))
-        .bind(("0.0.0.0", port))?
-        .run()
-        .await
+    HttpServer::new(|| {
+        App::new()
+            .wrap(middleware::Compress::default())
+            .wrap(middleware::Logger::default())
+            .service(handler)
+    })
+    .bind(("0.0.0.0", port))?
+    .run()
+    .await
 }
 
 #[post("/")]
-async fn rpc(payload: Bytes) -> impl Responder {
-    dbg!(payload);
-    dbg!(RpcEvent::random());
+async fn handler(req: HttpRequest) -> impl Responder {
+    dbg!(req);
 
-    HttpResponse::Ok()
+    if thread_rng().gen::<f32>() >= SUCCESS_PERCENTAGE {
+        return RpcEvent::random().respond();
+    }
+
+    HttpResponse::Ok().finish()
 }
 
 #[derive(Debug)]
@@ -53,7 +60,7 @@ impl RpcEvent {
         rand::random()
     }
 
-    pub fn respond(&self) -> impl Responder {
+    pub fn respond(&self) -> HttpResponse {
         match self {
             RpcEvent::RateLimit => HttpResponse::TooManyRequests().finish(),
             RpcEvent::Timeout => HttpResponse::RequestTimeout().finish(),
