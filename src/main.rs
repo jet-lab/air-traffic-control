@@ -13,25 +13,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use actix_web::web::Bytes;
+use actix_web::web::{Bytes, Data};
 use actix_web::{middleware, post, App, HttpResponse, HttpServer, Responder};
 use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
+use std::env::var;
 
 const SUCCESS_PERCENTAGE: f32 = 0.75;
+
+struct ServiceConfig {
+    rpc_endpoint: String,
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let port: u16 = option_env!("PORT")
-        .map(|p| p.parse().unwrap())
-        .unwrap_or(8080);
+    let port: u16 = var("PORT").map(|p| p.parse().unwrap()).unwrap_or(8080);
 
     HttpServer::new(|| {
         App::new()
             .wrap(middleware::Compress::default())
             .wrap(middleware::Logger::default())
+            .app_data(Data::new(ServiceConfig {
+                rpc_endpoint: var("RPC_ENDPOINT")
+                    .unwrap_or_else(|_| "http://localhost:8899".into()),
+            }))
             .service(rpc)
     })
     .bind(("0.0.0.0", port))?
@@ -40,15 +47,18 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[post("/")]
-async fn rpc(payload: Bytes) -> Result<impl Responder, Box<dyn std::error::Error>> {
-    dbg!(payload.clone());
+async fn rpc(
+    payload: Bytes,
+    data: Data<ServiceConfig>,
+) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    dbg!(&payload);
 
     if thread_rng().gen::<f32>() >= SUCCESS_PERCENTAGE {
         return Ok(RpcEvent::random().respond());
     }
 
     let res = reqwest::Client::new()
-        .post("http://localhost:8899")
+        .post(data.rpc_endpoint.clone())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(payload)
         .send()
