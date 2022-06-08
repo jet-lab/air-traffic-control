@@ -13,7 +13,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use actix_web::{middleware, post, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::web::Bytes;
+use actix_web::{middleware, post, App, HttpResponse, HttpServer, Responder};
 use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
 
@@ -31,7 +32,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(middleware::Compress::default())
             .wrap(middleware::Logger::default())
-            .service(handler)
+            .service(rpc)
     })
     .bind(("0.0.0.0", port))?
     .run()
@@ -39,14 +40,25 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[post("/")]
-async fn handler(req: HttpRequest) -> impl Responder {
-    dbg!(req);
+async fn rpc(payload: Bytes) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    dbg!(payload.clone());
 
     if thread_rng().gen::<f32>() >= SUCCESS_PERCENTAGE {
-        return RpcEvent::random().respond();
+        return Ok(RpcEvent::random().respond());
     }
 
-    HttpResponse::Ok().finish()
+    let res = reqwest::Client::new()
+        .post("http://localhost:8899")
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .body(res))
 }
 
 #[derive(Debug)]
