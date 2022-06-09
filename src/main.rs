@@ -58,16 +58,18 @@ async fn rpc(
 ) -> Result<impl Responder, Box<dyn std::error::Error>> {
     dbg!(&payload);
 
-    if thread_rng().gen::<f32>() >= SUCCESS_PERCENTAGE {
-        return Ok(RpcEvent::random().respond().await);
-    }
-
     let req: serde_json::Value = serde_json::from_slice(payload.as_ref())?;
     let method = req.get("method").unwrap().as_str().unwrap();
 
+    let mut rng = thread_rng();
+
+    if rng.gen::<f32>() >= SUCCESS_PERCENTAGE {
+        return Ok(RpcEvent::random().respond().await);
+    }
+
     match method {
         "sendTransaction" => {
-            let sig = generate_fake_signature();
+            let sig = generate_fake_signature(&mut rng);
 
             let mut fake_sigs = data.fake_signatures.lock().unwrap();
             fake_sigs.push(sig.clone());
@@ -100,8 +102,14 @@ async fn rpc(
     }
 }
 
-fn generate_fake_signature() -> String {
-    todo!()
+fn generate_fake_signature<R: Rng + ?Sized>(r: &mut R) -> String {
+    bs58::encode(
+        r.sample_iter(&rand::distributions::Alphanumeric)
+            .take(64)
+            .map(char::from)
+            .collect::<String>(),
+    )
+    .into_string()
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +159,17 @@ mod tests {
             RpcEvent::Timeout.respond().await.status(),
             HttpResponse::RequestTimeout().finish().status(),
         );
+    }
+
+    #[test]
+    fn fake_signature() {
+        let mut r = thread_rng();
+        let sig1 = generate_fake_signature(&mut r);
+        let sig2 = generate_fake_signature(&mut r);
+
+        assert_ne!(sig1, sig2);
+        assert_eq!(bs58::decode(sig1).into_vec().unwrap().len(), 64);
+        assert_eq!(bs58::decode(sig2).into_vec().unwrap().len(), 64);
     }
 
     #[test]

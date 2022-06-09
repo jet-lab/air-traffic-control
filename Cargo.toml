@@ -19,6 +19,7 @@ opt-level = "s"
 
 [dependencies]
 actix-web = "4.0"
+bs58 = "0.4"
 env_logger = "0.9"
 rand = "0.8"
 reqwest = "0.11"
