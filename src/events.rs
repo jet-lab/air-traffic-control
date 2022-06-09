@@ -40,9 +40,8 @@ impl RpcEvent {
                 let sig = generate_fake_signature(&mut rng);
 
                 let mut fake_sigs = data.fake_signatures.lock().unwrap();
+                dbg!(&fake_sigs);
                 fake_sigs.push(sig.clone());
-
-                dbg!(&data.fake_signatures);
 
                 HttpResponse::Ok().content_type("application/json").body(
                     json!({

@@ -23,8 +23,8 @@ mod events;
 
 use events::RpcEvent;
 
-const SUCCESS_RPC_PERCENTAGE: f32 = 0.75;
-const SUCCESS_TX_PERCENTAGE: f32 = 0.65;
+const SUCCESS_RPC_PERCENTAGE: f32 = 1.0;
+const SUCCESS_TX_PERCENTAGE: f32 = 0.25;
 
 #[derive(Default)]
 pub struct GlobalState {
