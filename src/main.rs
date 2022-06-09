@@ -36,11 +36,12 @@ pub struct GlobalState {
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let port: u16 = var("PORT").map(|p| p.parse().unwrap()).unwrap_or(8080);
+    let workers: usize = var("ATC_WORKERS").map(|w| w.parse().unwrap()).unwrap_or(10);
+    let port: u16 = var("ATC_PORT").map(|p| p.parse().unwrap()).unwrap_or(8080);
 
     let shared_data = web::Data::new(GlobalState {
         fake_signatures: Mutex::new(Vec::new()),
-        rpc_endpoint: var("RPC_ENDPOINT").unwrap_or_else(|_| "http://localhost:8899".into()),
+        rpc_endpoint: var("SOLANA_RPC_ENDPOINT").unwrap_or_else(|_| "http://localhost:8899".into()),
     });
 
     HttpServer::new(move || {
@@ -51,6 +52,7 @@ async fn main() -> std::io::Result<()> {
             .service(rpc)
     })
     .bind(("0.0.0.0", port))?
+    .workers(workers)
     .run()
     .await
 }
