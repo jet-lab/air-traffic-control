@@ -13,17 +13,21 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use actix_web::web;
-use actix_web::{middleware, post, App, HttpResponse, HttpServer, Responder};
-use rand::distributions::{Distribution, Standard};
+use actix_web::{middleware, post, App, HttpResponse, HttpServer};
+use actix_web::{web, HttpResponseBuilder};
 use rand::{thread_rng, Rng};
-use serde_json::json;
 use std::env::var;
 use std::sync::Mutex;
 
-const SUCCESS_PERCENTAGE: f32 = 0.75;
+mod events;
 
-struct ServiceConfig {
+use events::RpcEvent;
+
+const SUCCESS_RPC_PERCENTAGE: f32 = 0.75;
+const SUCCESS_TX_PERCENTAGE: f32 = 0.65;
+
+#[derive(Default)]
+pub struct GlobalState {
     fake_signatures: Mutex<Vec<String>>,
     rpc_endpoint: String,
 }
@@ -34,7 +38,7 @@ async fn main() -> std::io::Result<()> {
 
     let port: u16 = var("PORT").map(|p| p.parse().unwrap()).unwrap_or(8080);
 
-    let shared_data = web::Data::new(ServiceConfig {
+    let shared_data = web::Data::new(GlobalState {
         fake_signatures: Mutex::new(Vec::new()),
         rpc_endpoint: var("RPC_ENDPOINT").unwrap_or_else(|_| "http://localhost:8899".into()),
     });
@@ -54,8 +58,8 @@ async fn main() -> std::io::Result<()> {
 #[post("/")]
 async fn rpc(
     payload: web::Bytes,
-    data: web::Data<ServiceConfig>,
-) -> Result<impl Responder, Box<dyn std::error::Error>> {
+    data: web::Data<GlobalState>,
+) -> Result<HttpResponse, Box<dyn std::error::Error>> {
     dbg!(&payload);
 
     let req: serde_json::Value = serde_json::from_slice(payload.as_ref())?;
@@ -63,123 +67,40 @@ async fn rpc(
 
     let mut rng = thread_rng();
 
-    if rng.gen::<f32>() >= SUCCESS_PERCENTAGE {
-        return Ok(RpcEvent::random().respond().await);
+    if rng.gen::<f32>() >= SUCCESS_RPC_PERCENTAGE {
+        return Ok(RpcEvent::random().respond(&data).await);
     }
 
     match method {
-        "sendTransaction" => {
-            let sig = generate_fake_signature(&mut rng);
+        "getSignatureStatuses" => {
+            let param_sig = req.get("params").unwrap().as_array().unwrap()[0]
+                .as_str()
+                .unwrap()
+                .to_string();
 
-            let mut fake_sigs = data.fake_signatures.lock().unwrap();
-            fake_sigs.push(sig.clone());
-
-            dbg!(&data.fake_signatures);
-
-            Ok(HttpResponse::Ok().content_type("application/json").body(
-                json!({
-                    "jsonrpc": "2.0",
-                    "result": sig,
-                    "id": 1,
-                })
-                .to_string(),
-            ))
-        }
-        _ => {
-            let res = reqwest::Client::new()
-                .post(data.rpc_endpoint.clone())
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .body(payload)
-                .send()
-                .await?
-                .text()
-                .await?;
-
-            Ok(HttpResponse::Ok()
-                .content_type("application/json")
-                .body(res))
-        }
-    }
-}
-
-fn generate_fake_signature<R: Rng + ?Sized>(r: &mut R) -> String {
-    bs58::encode(
-        r.sample_iter(&rand::distributions::Alphanumeric)
-            .take(64)
-            .map(char::from)
-            .collect::<String>(),
-    )
-    .into_string()
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-enum RpcEvent {
-    RateLimit,
-    Timeout,
-}
-
-impl RpcEvent {
-    pub fn random() -> Self {
-        rand::random()
-    }
-
-    pub async fn respond(&self) -> HttpResponse {
-        match self {
-            RpcEvent::RateLimit => HttpResponse::TooManyRequests().finish(),
-            RpcEvent::Timeout => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                HttpResponse::RequestTimeout().finish()
+            if data.fake_signatures.lock().unwrap().contains(&param_sig) {
+                Ok(RpcEvent::Timeout.respond(&data).await)
+            } else {
+                passthrough(payload, &data).await
             }
         }
-    }
-}
-
-impl Distribution<RpcEvent> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RpcEvent {
-        match rng.gen_range(0..=1) {
-            0 => RpcEvent::RateLimit,
-            _ => RpcEvent::Timeout,
+        "sendTransaction" if rng.gen::<f32>() >= SUCCESS_TX_PERCENTAGE => {
+            Ok(RpcEvent::FalsifiedSignature.respond(&data).await)
         }
+        _ => passthrough(payload, &data).await,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+async fn passthrough(
+    payload: web::Bytes,
+    data: &web::Data<GlobalState>,
+) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    let res = reqwest::Client::new()
+        .post(data.rpc_endpoint.clone())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(payload)
+        .send()
+        .await?;
 
-    #[actix_rt::test]
-    async fn event_responses() {
-        assert_eq!(
-            RpcEvent::RateLimit.respond().await.status(),
-            HttpResponse::TooManyRequests().finish().status(),
-        );
-
-        assert_eq!(
-            RpcEvent::Timeout.respond().await.status(),
-            HttpResponse::RequestTimeout().finish().status(),
-        );
-    }
-
-    #[test]
-    fn fake_signature() {
-        let mut r = thread_rng();
-        let sig1 = generate_fake_signature(&mut r);
-        let sig2 = generate_fake_signature(&mut r);
-
-        assert_ne!(sig1, sig2);
-        assert_eq!(bs58::decode(sig1).into_vec().unwrap().len(), 64);
-        assert_eq!(bs58::decode(sig2).into_vec().unwrap().len(), 64);
-    }
-
-    #[test]
-    fn random_events() {
-        let events1: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
-        assert!(!events1.is_empty());
-
-        let events2: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
-        assert!(!events2.is_empty());
-
-        assert_ne!(events1, events2);
-    }
+    Ok(HttpResponseBuilder::new(res.status()).body(res.text().await?))
 }
