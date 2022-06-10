@@ -74,12 +74,16 @@ async fn rpc(
     match method {
         "getSignatureStatuses" => {
             let param_sig = req.get("params").unwrap().as_array().unwrap()[0]
+                .as_array()
+                .unwrap()[0]
                 .as_str()
                 .unwrap()
                 .to_string();
 
             if data.fake_signatures.lock().unwrap().contains(&param_sig) {
-                RpcEvent::Timeout.respond(&payload, &data).await
+                RpcEvent::UnconfirmedSignature
+                    .respond(&payload, &data)
+                    .await
             } else {
                 passthrough(&payload, &data).await
             }
@@ -98,6 +102,7 @@ enum RpcEvent {
     Latency,
     RateLimit,
     Timeout,
+    UnconfirmedSignature,
 }
 
 impl RpcEvent {
@@ -137,6 +142,23 @@ impl RpcEvent {
             RpcEvent::Timeout => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 Ok(HttpResponse::RequestTimeout().finish())
+            }
+            RpcEvent::UnconfirmedSignature => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                Ok(HttpResponse::Ok().content_type("application/json").body(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "context": {
+                                "apiVersion": "1.10.24",
+                                "slot": 1
+                            },
+                            "value": [null]
+                        },
+                        "id": 1
+                    })
+                    .to_string(),
+                ))
             }
         }
     }
