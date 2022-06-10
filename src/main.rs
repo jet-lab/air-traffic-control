@@ -15,13 +15,11 @@
 
 use actix_web::{middleware, post, App, HttpResponse, HttpServer};
 use actix_web::{web, HttpResponseBuilder};
+use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
+use serde_json::json;
 use std::env::var;
 use std::sync::Mutex;
-
-mod events;
-
-use events::RpcEvent;
 
 const SUCCESS_RPC_PERCENTAGE: f32 = 1.0;
 const SUCCESS_TX_PERCENTAGE: f32 = 0.25;
@@ -70,7 +68,7 @@ async fn rpc(
     let mut rng = thread_rng();
 
     if rng.gen::<f32>() >= SUCCESS_RPC_PERCENTAGE {
-        return Ok(RpcEvent::random().respond(&data).await);
+        return RpcEvent::random().respond(&payload, &data).await;
     }
 
     match method {
@@ -81,28 +79,153 @@ async fn rpc(
                 .to_string();
 
             if data.fake_signatures.lock().unwrap().contains(&param_sig) {
-                Ok(RpcEvent::Timeout.respond(&data).await)
+                RpcEvent::Timeout.respond(&payload, &data).await
             } else {
-                passthrough(payload, &data).await
+                passthrough(&payload, &data).await
             }
         }
         "sendTransaction" if rng.gen::<f32>() >= SUCCESS_TX_PERCENTAGE => {
-            Ok(RpcEvent::FalsifiedSignature.respond(&data).await)
+            RpcEvent::FalsifiedSignature.respond(&payload, &data).await
         }
-        _ => passthrough(payload, &data).await,
+        _ => passthrough(&payload, &data).await,
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+enum RpcEvent {
+    FalsifiedSignature,
+    Latency,
+    RateLimit,
+    Timeout,
+}
+
+impl RpcEvent {
+    pub fn random() -> Self {
+        rand::random()
+    }
+
+    pub async fn respond(
+        &self,
+        payload: &web::Bytes,
+        data: &web::Data<GlobalState>,
+    ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+        let mut rng = thread_rng();
+
+        match self {
+            RpcEvent::FalsifiedSignature => {
+                let sig = generate_fake_signature(&mut rng);
+
+                let mut fake_sigs = data.fake_signatures.lock().unwrap();
+                dbg!(&fake_sigs);
+                fake_sigs.push(sig.clone());
+
+                Ok(HttpResponse::Ok().content_type("application/json").body(
+                    json!({
+                        "jsonrpc": "2.0",
+                        "result": sig,
+                        "id": 1,
+                    })
+                    .to_string(),
+                ))
+            }
+            RpcEvent::Latency => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(5..=15))).await;
+                passthrough(payload, data).await
+            }
+            RpcEvent::RateLimit => Ok(HttpResponse::TooManyRequests().finish()),
+            RpcEvent::Timeout => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                Ok(HttpResponse::RequestTimeout().finish())
+            }
+        }
+    }
+}
+
+impl Distribution<RpcEvent> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RpcEvent {
+        match rng.gen_range(0..=1) {
+            0 => RpcEvent::RateLimit,
+            1 => RpcEvent::Latency,
+            _ => RpcEvent::Timeout,
+        }
     }
 }
 
 async fn passthrough(
-    payload: web::Bytes,
+    payload: &web::Bytes,
     data: &web::Data<GlobalState>,
 ) -> Result<HttpResponse, Box<dyn std::error::Error>> {
     let res = reqwest::Client::new()
         .post(data.rpc_endpoint.clone())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(payload)
+        .body(payload.clone())
         .send()
         .await?;
 
     Ok(HttpResponseBuilder::new(res.status()).body(res.text().await?))
+}
+
+fn generate_fake_signature<R: Rng + ?Sized>(r: &mut R) -> String {
+    bs58::encode(
+        r.sample_iter(&rand::distributions::Alphanumeric)
+            .take(64)
+            .map(char::from)
+            .collect::<String>(),
+    )
+    .into_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[actix_rt::test]
+    async fn event_responses() {
+        assert_eq!(
+            RpcEvent::RateLimit
+                .respond(
+                    &web::Bytes::default(),
+                    &web::Data::new(GlobalState::default())
+                )
+                .await
+                .unwrap()
+                .status(),
+            HttpResponse::TooManyRequests().finish().status(),
+        );
+
+        assert_eq!(
+            RpcEvent::Timeout
+                .respond(
+                    &web::Bytes::default(),
+                    &web::Data::new(GlobalState::default())
+                )
+                .await
+                .unwrap()
+                .status(),
+            HttpResponse::RequestTimeout().finish().status(),
+        );
+    }
+
+    #[test]
+    fn fake_signature() {
+        let mut r = thread_rng();
+        let sig1 = generate_fake_signature(&mut r);
+        let sig2 = generate_fake_signature(&mut r);
+
+        assert_ne!(sig1, sig2);
+        assert_eq!(bs58::decode(sig1).into_vec().unwrap().len(), 64);
+        assert_eq!(bs58::decode(sig2).into_vec().unwrap().len(), 64);
+    }
+
+    #[test]
+    fn random_events() {
+        let events1: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
+        assert!(!events1.is_empty());
+
+        let events2: Vec<RpcEvent> = (0..10).map(|_| RpcEvent::random()).collect();
+        assert!(!events2.is_empty());
+
+        assert_ne!(events1, events2);
+    }
 }
