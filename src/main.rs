@@ -135,12 +135,12 @@ impl RpcEvent {
                 ))
             }
             RpcEvent::Latency => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(5..=15))).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(5..=10))).await;
                 passthrough(payload, data).await
             }
             RpcEvent::RateLimit => Ok(HttpResponse::TooManyRequests().finish()),
             RpcEvent::Timeout => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(15..=20))).await;
                 Ok(HttpResponse::RequestTimeout().finish())
             }
             RpcEvent::UnconfirmedSignature => {
