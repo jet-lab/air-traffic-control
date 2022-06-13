@@ -17,7 +17,7 @@ use actix_web::{get, post, web, HttpResponse, HttpResponseBuilder};
 use rand::{thread_rng, Rng};
 use std::sync::Mutex;
 
-use crate::config::PercentageSettings;
+use crate::config::{Config, PercentageSettings};
 use crate::event::RpcEvent;
 
 #[derive(Default)]
@@ -25,6 +25,16 @@ pub struct GlobalState {
     pub fake_signatures: Mutex<Vec<String>>,
     pub percentages: PercentageSettings,
     pub rpc_endpoint: String,
+}
+
+impl From<&Config> for GlobalState {
+    fn from(c: &Config) -> Self {
+        Self {
+            fake_signatures: Mutex::new(Vec::new()),
+            percentages: c.settings.percentages.clone(),
+            rpc_endpoint: c.settings.rpc_endpoint.clone(),
+        }
+    }
 }
 
 pub async fn passthrough(
@@ -126,7 +136,7 @@ mod tests {
             .set_payload(
                 json!({
                     "jsonrpc": "2.0",
-                    "id": "1",
+                    "id": 1,
                     "method": "sendTransaction",
                     "params": [""]
                 })
@@ -170,7 +180,7 @@ mod tests {
             .set_payload(
                 json!({
                     "jsonrpc": "2.0",
-                    "id": "1",
+                    "id": 1,
                     "method": "sendTransaction",
                     "params": [""]
                 })
@@ -186,7 +196,7 @@ mod tests {
             .set_payload(
                 json!({
                     "jsonrpc": "2.0",
-                    "id": "1",
+                    "id": 1,
                     "method": "getSignatureStatuses",
                     "params": [
                         [tx_res.get("result").unwrap().as_str()]

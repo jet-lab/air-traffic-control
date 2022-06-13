@@ -17,7 +17,6 @@ use actix_web::web;
 use actix_web::{middleware, App, HttpServer};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Mutex;
 
 mod config;
 mod event;
@@ -34,11 +33,7 @@ async fn main() -> std::io::Result<()> {
 
     println!("{:#?}", config);
 
-    let shared_data = web::Data::new(service::GlobalState {
-        fake_signatures: Mutex::new(Vec::new()),
-        percentages: config.settings.percentages,
-        rpc_endpoint: config.settings.rpc_endpoint,
-    });
+    let shared_data = web::Data::new(service::GlobalState::from(&config));
 
     HttpServer::new(move || {
         App::new()
