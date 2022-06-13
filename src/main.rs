@@ -32,6 +32,8 @@ async fn main() -> std::io::Result<()> {
         .map(|p| config::Config::try_from(p).unwrap())
         .unwrap_or_default();
 
+    println!("{:#?}", config);
+
     let shared_data = web::Data::new(service::GlobalState {
         fake_signatures: Mutex::new(Vec::new()),
         percentages: config.settings.percentages,
