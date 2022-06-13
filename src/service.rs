@@ -85,3 +85,129 @@ pub async fn rpc(
         _ => passthrough(&payload, &data).await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use actix_web::http::header::{ContentType, HeaderValue};
+    use actix_web::http::StatusCode;
+    use actix_web::{test, web, App};
+    use serde_json::{json, Value};
+
+    use super::*;
+    use crate::config::PercentageSettings;
+
+    #[actix_web::test]
+    async fn health_ok() {
+        let app = test::init_service(App::new().service(health)).await;
+        let res =
+            test::call_service(&app, test::TestRequest::get().uri("/health").to_request()).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn fake_signature_received() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(GlobalState {
+                    fake_signatures: Mutex::new(Vec::new()),
+                    percentages: PercentageSettings {
+                        rpc_success: 1.0,
+                        tx_success: 0.0,
+                    },
+                    rpc_endpoint: "".into(),
+                }))
+                .service(rpc),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/")
+            .insert_header(ContentType::json())
+            .set_payload(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "method": "sendTransaction",
+                    "params": [""]
+                })
+                .to_string(),
+            )
+            .to_request();
+
+        let res = test::call_service(&app, req).await;
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get("X-ATC-Event"),
+            Some(&HeaderValue::from_str("FalsifiedSignature").unwrap())
+        );
+
+        let body: Value = test::read_body_json(res).await;
+        let sig = body.get("result").unwrap().as_str().unwrap();
+
+        assert_eq!(bs58::decode(sig).into_vec().unwrap().len(), 64);
+    }
+
+    #[actix_web::test]
+    async fn unconfirmed_fake_signature() {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(GlobalState {
+                    fake_signatures: Mutex::new(Vec::new()),
+                    percentages: PercentageSettings {
+                        rpc_success: 1.0,
+                        tx_success: 0.0,
+                    },
+                    rpc_endpoint: "".into(),
+                }))
+                .service(rpc),
+        )
+        .await;
+
+        let tx_req = test::TestRequest::post()
+            .uri("/")
+            .insert_header(ContentType::json())
+            .set_payload(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "method": "sendTransaction",
+                    "params": [""]
+                })
+                .to_string(),
+            )
+            .to_request();
+
+        let tx_res: Value = test::call_and_read_body_json(&app, tx_req).await;
+
+        let cnf_req = test::TestRequest::post()
+            .uri("/")
+            .insert_header(ContentType::json())
+            .set_payload(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": "1",
+                    "method": "getSignatureStatuses",
+                    "params": [
+                        [tx_res.get("result").unwrap().as_str()]
+                    ]
+                })
+                .to_string(),
+            )
+            .to_request();
+
+        let cnf_res = test::call_service(&app, cnf_req).await;
+
+        assert_eq!(
+            cnf_res.headers().get("X-ATC-Event"),
+            Some(&HeaderValue::from_str("UnconfirmedSignature").unwrap())
+        );
+
+        let cnf_body: Value = test::read_body_json(cnf_res).await;
+
+        assert_eq!(
+            *cnf_body.get("result").unwrap().get("value").unwrap(),
+            json!([null])
+        );
+    }
+}

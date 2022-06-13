@@ -82,10 +82,10 @@ impl TryFrom<&str> for Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::fs::read_to_string;
     use std::str::FromStr;
+
+    use super::*;
 
     #[test]
     fn config_default() {

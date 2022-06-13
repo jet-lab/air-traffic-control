@@ -50,14 +50,17 @@ impl RpcEvent {
                 dbg!(&fake_sigs);
                 fake_sigs.push(sig.clone());
 
-                Ok(HttpResponse::Ok().content_type("application/json").body(
-                    json!({
-                        "jsonrpc": "2.0",
-                        "result": sig,
-                        "id": 1,
-                    })
-                    .to_string(),
-                ))
+                Ok(HttpResponse::Ok()
+                    .insert_header(("X-ATC-Event", "FalsifiedSignature"))
+                    .content_type("application/json")
+                    .body(
+                        json!({
+                            "jsonrpc": "2.0",
+                            "result": sig,
+                            "id": 1,
+                        })
+                        .to_string(),
+                    ))
             }
             RpcEvent::Latency => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(5..=10))).await;
@@ -70,20 +73,23 @@ impl RpcEvent {
             }
             RpcEvent::UnconfirmedSignature => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                Ok(HttpResponse::Ok().content_type("application/json").body(
-                    json!({
-                        "jsonrpc": "2.0",
-                        "result": {
-                            "context": {
-                                "apiVersion": "1.10.24",
-                                "slot": 1
+                Ok(HttpResponse::Ok()
+                    .insert_header(("X-ATC-Event", "UnconfirmedSignature"))
+                    .content_type("application/json")
+                    .body(
+                        json!({
+                            "jsonrpc": "2.0",
+                            "result": {
+                                "context": {
+                                    "apiVersion": "1.10.24",
+                                    "slot": 1
+                                },
+                                "value": [null]
                             },
-                            "value": [null]
-                        },
-                        "id": 1
-                    })
-                    .to_string(),
-                ))
+                            "id": 1
+                        })
+                        .to_string(),
+                    ))
             }
         }
     }
