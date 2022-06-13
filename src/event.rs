@@ -13,6 +13,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::str::FromStr;
+
+use actix_web::http::header::{HeaderName, HeaderValue};
 use actix_web::{web, HttpResponse};
 use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
@@ -64,12 +67,21 @@ impl RpcEvent {
             }
             RpcEvent::Latency => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(5..=10))).await;
-                passthrough(payload, data).await
+                let mut res = passthrough(payload, data).await?;
+                res.headers_mut().insert(
+                    HeaderName::from_str("X-ATC-Event")?,
+                    HeaderValue::from_str("Latency")?,
+                );
+                Ok(res)
             }
-            RpcEvent::RateLimit => Ok(HttpResponse::TooManyRequests().finish()),
+            RpcEvent::RateLimit => Ok(HttpResponse::TooManyRequests()
+                .insert_header(("X-ATC-Event", "RateLimit"))
+                .finish()),
             RpcEvent::Timeout => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(rng.gen_range(15..=20))).await;
-                Ok(HttpResponse::RequestTimeout().finish())
+                Ok(HttpResponse::RequestTimeout()
+                    .insert_header(("X-ATC-Event", "Timeout"))
+                    .finish())
             }
             RpcEvent::UnconfirmedSignature => {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -121,28 +133,38 @@ mod tests {
 
     #[actix_rt::test]
     async fn event_responses() {
-        assert_eq!(
-            RpcEvent::RateLimit
-                .respond(
-                    &web::Bytes::default(),
-                    &web::Data::new(GlobalState::default())
-                )
-                .await
-                .unwrap()
-                .status(),
-            HttpResponse::TooManyRequests().finish().status(),
-        );
+        let rate_limit_res = RpcEvent::RateLimit
+            .respond(
+                &web::Bytes::default(),
+                &web::Data::new(GlobalState::default()),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(
-            RpcEvent::Timeout
-                .respond(
-                    &web::Bytes::default(),
-                    &web::Data::new(GlobalState::default())
-                )
-                .await
-                .unwrap()
-                .status(),
+            rate_limit_res.status(),
+            HttpResponse::TooManyRequests().finish().status(),
+        );
+        assert_eq!(
+            rate_limit_res.headers().get("X-ATC-Event"),
+            Some(&HeaderValue::from_str("RateLimit").unwrap())
+        );
+
+        let timeout_res = RpcEvent::Timeout
+            .respond(
+                &web::Bytes::default(),
+                &web::Data::new(GlobalState::default()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            timeout_res.status(),
             HttpResponse::RequestTimeout().finish().status(),
+        );
+        assert_eq!(
+            timeout_res.headers().get("X-ATC-Event"),
+            Some(&HeaderValue::from_str("Timeout").unwrap())
         );
     }
 
