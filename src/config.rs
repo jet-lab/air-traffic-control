@@ -43,7 +43,7 @@ pub struct PercentageSettings {
 
 impl Default for PercentageSettings {
     fn default() -> Self {
-        PercentageSettings {
+        Self {
             rpc_success: 0.65,
             tx_success: 0.8,
         }
@@ -52,7 +52,7 @@ impl Default for PercentageSettings {
 
 impl Default for Config {
     fn default() -> Self {
-        Config {
+        Self {
             settings: Settings {
                 rpc_endpoint: "http://127.0.0.1:8899".into(),
                 percentages: Default::default(),
