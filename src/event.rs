@@ -13,16 +13,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::str::FromStr;
-
 use actix_web::http::header::{HeaderName, HeaderValue};
 use actix_web::{web, HttpResponse};
 use rand::distributions::{Distribution, Standard};
 use rand::{thread_rng, Rng};
 use serde_json::json;
+use std::str::FromStr;
 
 use crate::service::{passthrough, GlobalState};
 
+/// Enum declaraction to define and implement the logic
+/// for various types of Solana RPC and transaction failure
+/// and error events from the nodes.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum RpcEvent {
@@ -34,10 +36,38 @@ pub enum RpcEvent {
 }
 
 impl RpcEvent {
+    /// Returns a randomly selected `RpcEvent` variant.
+    ///
+    /// The variants that are used in the random distribution are:
+    /// - `RpcEvent::Latency`
+    /// - `RpcEvent::RateLimit`
+    /// - `RpcEvent::Timeout`
+    ///
+    /// The remaining variants are utilized in special cases that require more
+    /// complex RPC call interception and spoofing.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use atc::event::RpcEvent;
+    ///
+    /// let event: RpcEvent = RpcEvent::random();
+    /// ```
+    ///
+    /// Since `RpcEvent` implements `rand::Distribution<RpcEvent>`, you can also just use the
+    /// native `rand::random` function to generate a random variant.
+    ///
+    /// ```ignore
+    /// let event: RpcEvent = rand::random();
+    /// ```
     pub fn random() -> Self {
         rand::random()
     }
 
+    /// The `HttpResponse` responder for each variant of `RpcEvent` to define how
+    /// they should interact with the incoming request and shared application data
+    /// and defines the event type's RPC or transaction interception behavior prior
+    /// to responding to the incoming request itself.
     pub async fn respond(
         &self,
         payload: &web::Bytes,
@@ -49,7 +79,7 @@ impl RpcEvent {
             RpcEvent::FalsifiedSignature => {
                 let sig = generate_fake_signature(&mut rng);
 
-                let mut fake_sigs = data.fake_signatures.lock().unwrap();
+                let mut fake_sigs = data.fake_signatures.write().unwrap();
                 dbg!(&fake_sigs);
                 fake_sigs.push(sig.clone());
 
@@ -109,14 +139,22 @@ impl RpcEvent {
 
 impl Distribution<RpcEvent> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RpcEvent {
-        match rng.gen_range(0..=1) {
-            0 => RpcEvent::RateLimit,
-            1 => RpcEvent::Latency,
+        match rng.gen_range(0..=2) {
+            0 => RpcEvent::Latency,
+            1 => RpcEvent::RateLimit,
             _ => RpcEvent::Timeout,
         }
     }
 }
 
+/// Creates a randomly generated 64-byte and base-58 encoded signature string
+/// to be used for mocking transaction confirmation errors during intercepted RPC calls.
+///
+/// # Example
+/// ```ignore
+/// let mut rng = rand::thread_rng();
+/// let sig = generate_fake_signature(&mut rng);
+/// ```
 fn generate_fake_signature<R: Rng + ?Sized>(r: &mut R) -> String {
     bs58::encode(
         r.sample_iter(&rand::distributions::Alphanumeric)

@@ -15,14 +15,17 @@
 
 use actix_web::{get, post, web, HttpResponse, HttpResponseBuilder};
 use rand::{thread_rng, Rng};
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use crate::config::{Config, PercentageSettings};
 use crate::event::RpcEvent;
 
+/// The shared global application state to be used for internal
+/// proxy service tracking of RPC event interception details
+/// and external targets.
 #[derive(Default)]
 pub struct GlobalState {
-    pub fake_signatures: Mutex<Vec<String>>,
+    pub fake_signatures: RwLock<Vec<String>>,
     pub percentages: PercentageSettings,
     pub rpc_endpoint: String,
 }
@@ -30,13 +33,16 @@ pub struct GlobalState {
 impl From<&Config> for GlobalState {
     fn from(c: &Config) -> Self {
         Self {
-            fake_signatures: Mutex::new(Vec::new()),
+            fake_signatures: RwLock::new(Vec::new()),
             percentages: c.settings.percentages.clone(),
             rpc_endpoint: c.settings.rpc_endpoint.clone(),
         }
     }
 }
 
+/// HTTP responder function to perform a simple request passthrough
+/// to the validator that the proxy is fronting to get an non-manipulated
+/// RPC method reponse to the incoming or constructed request.
 pub async fn passthrough(
     payload: &web::Bytes,
     data: &web::Data<GlobalState>,
@@ -81,7 +87,7 @@ pub async fn rpc(
                 .unwrap()
                 .to_string();
 
-            if data.fake_signatures.lock().unwrap().contains(&param_sig) {
+            if data.fake_signatures.read().unwrap().contains(&param_sig) {
                 RpcEvent::UnconfirmedSignature
                     .respond(&payload, &data)
                     .await
@@ -119,7 +125,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(GlobalState {
-                    fake_signatures: Mutex::new(Vec::new()),
+                    fake_signatures: RwLock::new(Vec::new()),
                     percentages: PercentageSettings {
                         rpc_success: 1.0,
                         tx_success: 0.0,
@@ -163,7 +169,7 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(GlobalState {
-                    fake_signatures: Mutex::new(Vec::new()),
+                    fake_signatures: RwLock::new(Vec::new()),
                     percentages: PercentageSettings {
                         rpc_success: 1.0,
                         tx_success: 0.0,

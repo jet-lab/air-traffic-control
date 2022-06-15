@@ -17,12 +17,15 @@ use serde::Deserialize;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
+/// Top-level proxy server configuration struct.
 #[derive(Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Config {
     pub settings: Settings,
 }
 
+/// Server configuration settings for setting up the
+/// application and runtime details.
 #[derive(Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,8 @@ pub struct Settings {
     pub workers: usize,
 }
 
+/// Percentage details for success rates for incoming RPC
+/// and transaction request to the proxy.
 #[derive(Clone, Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "camelCase")]
