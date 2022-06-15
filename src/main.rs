@@ -33,7 +33,7 @@ async fn main() -> std::io::Result<()> {
 
     println!("{:#?}", config);
 
-    let shared_data = web::Data::new(service::GlobalState::from(&config));
+    let shared_data = web::Data::new(service::GlobalState::from(config.clone()));
 
     HttpServer::new(move || {
         App::new()

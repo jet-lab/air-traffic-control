@@ -30,12 +30,12 @@ pub struct GlobalState {
     pub rpc_endpoint: String,
 }
 
-impl From<&Config> for GlobalState {
-    fn from(c: &Config) -> Self {
+impl From<Config> for GlobalState {
+    fn from(c: Config) -> Self {
         Self {
             fake_signatures: RwLock::new(Vec::new()),
-            percentages: c.settings.percentages.clone(),
-            rpc_endpoint: c.settings.rpc_endpoint.clone(),
+            percentages: c.settings.percentages,
+            rpc_endpoint: c.settings.rpc_endpoint,
         }
     }
 }

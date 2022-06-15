@@ -18,7 +18,7 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 /// Top-level proxy server configuration struct.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Config {
     pub settings: Settings,
@@ -26,7 +26,7 @@ pub struct Config {
 
 /// Server configuration settings for setting up the
 /// application and runtime details.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {

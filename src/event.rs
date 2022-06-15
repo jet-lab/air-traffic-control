@@ -57,7 +57,7 @@ impl RpcEvent {
     /// Since `RpcEvent` implements `rand::Distribution<RpcEvent>`, you can also just use the
     /// native `rand::random` function to generate a random variant.
     ///
-    /// ```ignore
+    /// ```
     /// let event: RpcEvent = rand::random();
     /// ```
     pub fn random() -> Self {
