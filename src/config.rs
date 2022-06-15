@@ -20,16 +20,8 @@ use std::path::PathBuf;
 /// Top-level proxy server configuration struct.
 #[derive(Clone, Debug, Deserialize)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Config {
-    pub settings: Settings,
-}
-
-/// Server configuration settings for setting up the
-/// application and runtime details.
-#[derive(Clone, Debug, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "camelCase")]
-pub struct Settings {
+pub struct Config {
     pub rpc_endpoint: String,
     pub percentages: PercentageSettings,
     pub port: u16,
@@ -58,12 +50,10 @@ impl Default for PercentageSettings {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            settings: Settings {
-                rpc_endpoint: "http://127.0.0.1:8899".into(),
-                percentages: Default::default(),
-                port: 8080,
-                workers: 10,
-            },
+            rpc_endpoint: "http://127.0.0.1:8899".into(),
+            percentages: Default::default(),
+            port: 8080,
+            workers: 10,
         }
     }
 }
@@ -97,15 +87,13 @@ mod tests {
         assert_eq!(
             Config::default(),
             Config {
-                settings: Settings {
-                    rpc_endpoint: "http://127.0.0.1:8899".into(),
-                    percentages: PercentageSettings {
-                        rpc_success: 0.65,
-                        tx_success: 0.8,
-                    },
-                    port: 8080,
-                    workers: 10
-                }
+                rpc_endpoint: "http://127.0.0.1:8899".into(),
+                percentages: PercentageSettings {
+                    rpc_success: 0.65,
+                    tx_success: 0.8,
+                },
+                port: 8080,
+                workers: 10
             }
         );
     }
@@ -116,15 +104,13 @@ mod tests {
         assert_eq!(
             Config::try_from(val.as_str()).unwrap(),
             Config {
-                settings: Settings {
-                    rpc_endpoint: "http://localhost:8899".into(),
-                    percentages: PercentageSettings {
-                        rpc_success: 1.0,
-                        tx_success: 0.5
-                    },
-                    port: 8080,
-                    workers: 10
-                }
+                rpc_endpoint: "http://localhost:8899".into(),
+                percentages: PercentageSettings {
+                    rpc_success: 1.0,
+                    tx_success: 0.5
+                },
+                port: 8080,
+                workers: 10
             }
         );
     }
@@ -135,15 +121,13 @@ mod tests {
         assert_eq!(
             Config::try_from(p).unwrap(),
             Config {
-                settings: Settings {
-                    rpc_endpoint: "http://localhost:8899".into(),
-                    percentages: PercentageSettings {
-                        rpc_success: 1.0,
-                        tx_success: 0.5
-                    },
-                    port: 8080,
-                    workers: 10
-                }
+                rpc_endpoint: "http://localhost:8899".into(),
+                percentages: PercentageSettings {
+                    rpc_success: 1.0,
+                    tx_success: 0.5
+                },
+                port: 8080,
+                workers: 10
             }
         );
     }

@@ -34,8 +34,8 @@ impl From<Config> for GlobalState {
     fn from(c: Config) -> Self {
         Self {
             fake_signatures: RwLock::new(Vec::new()),
-            percentages: c.settings.percentages,
-            rpc_endpoint: c.settings.rpc_endpoint,
+            percentages: c.percentages,
+            rpc_endpoint: c.rpc_endpoint,
         }
     }
 }

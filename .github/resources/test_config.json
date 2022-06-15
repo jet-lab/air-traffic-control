@@ -1,11 +1,9 @@
 {
-  "settings": {
-    "rpcEndpoint": "http://localhost:8899",
-    "percentages": {
-      "rpcSuccess": 1.0,
-      "txSuccess": 0.5
-    },
-    "port": 8080,
-    "workers": 10
-  }
+  "rpcEndpoint": "http://localhost:8899",
+  "percentages": {
+    "rpcSuccess": 1.0,
+    "txSuccess": 0.5
+  },
+  "port": 8080,
+  "workers": 10
 }

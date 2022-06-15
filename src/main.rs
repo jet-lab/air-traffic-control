@@ -43,8 +43,8 @@ async fn main() -> std::io::Result<()> {
             .service(service::health)
             .service(service::rpc)
     })
-    .bind(("0.0.0.0", config.settings.port))?
-    .workers(config.settings.workers)
+    .bind(("0.0.0.0", config.port))?
+    .workers(config.workers)
     .run()
     .await
 }
